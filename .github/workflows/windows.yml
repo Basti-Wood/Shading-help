@@ -1,0 +1,57 @@
+name: Build and test Windows app
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile native app and run numerical tests
+        shell: cmd
+        run: call build.bat --ci
+      - name: Exercise window and drag controls
+        shell: pwsh
+        run: |
+          $destination = Join-Path $PWD 'build/smoke-ui.bmp'
+          $process = Start-Process -FilePath 'dist/ShadingHelp.exe' -ArgumentList @('--smoke', ('"' + $destination + '"')) -PassThru
+          if (-not $process.WaitForExit(120000)) {
+            $process.Kill()
+            throw 'Windows UI smoke test timed out'
+          }
+          if ($process.ExitCode -ne 0) { throw "UI smoke test failed: $($process.ExitCode)" }
+          if (-not (Test-Path $destination)) { throw 'No UI capture was produced' }
+          Add-Type -AssemblyName System.Drawing
+          foreach ($name in @('smoke-ui', 'smoke-render')) {
+            $image = [System.Drawing.Image]::FromFile((Join-Path $PWD "build/$name.bmp"))
+            $image.Save((Join-Path $PWD "build/$name.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+            $image.Dispose()
+          }
+      - name: Upload portable Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShadingHelp-Windows-x64
+          path: dist/
+          if-no-files-found: error
+      - name: Upload UI and render captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-verification
+          path: build/smoke-*.png
+          if-no-files-found: warn
+  portable-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile with warnings as errors and sanitizers
+        run: |
+          mkdir -p build
+          g++ -std=c++17 -O1 -g -pthread -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined src/core.cpp src/progressive.cpp tests/tests.cpp -o build/tests
+          ./build/tests

@@ -1,0 +1,9 @@
+/build/
+/dist/
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.shade
+*.bmp
+!docs/*.bmp
