@@ -12,6 +12,7 @@
 #include "progressive.hpp"
 #include <cstdio>
 #include <cwchar>
+#include <fstream>
 #include <functional>
 #include <sstream>
 
@@ -50,6 +51,7 @@ struct App {
     std::filesystem::path smokePath;
 
     int px(float n)const{return int(n*dpi+.5f);}
+    int px(int n)const{return px(float(n));}
     void text(HDC dc,std::wstring value,RECT r,COLORREF color=ink,HFONT use=nullptr,UINT flags=DT_LEFT|DT_VCENTER|DT_SINGLELINE) {
         SetBkMode(dc,TRANSPARENT);SetTextColor(dc,color);SelectObject(dc,use?use:font);
         DrawTextW(dc,value.c_str(),int(value.size()),&r,flags);
@@ -313,12 +315,12 @@ struct App {
                 case IdSave:{auto p=fileDialog(true,L"Shading Help scene\0*.shade\0\0",L"shade",L"study.shade");if(!p.empty()){saveSettings(p,settings);message=L"Scene saved.";}break;}
                 case IdLoad:{auto p=fileDialog(false,L"Shading Help scene\0*.shade\0\0",L"shade");if(p.empty())break;
                     Settings next=loadSettings(p);auto geometry=std::make_shared<const std::vector<Triangle>>();
-                    if(!next.objPath.empty())geometry=std::make_shared<const std::vector<Triangle>>(loadObj(std::filesystem::u8path(next.objPath)));
+                    if(next.model==Model::Imported&&!next.objPath.empty())geometry=std::make_shared<const std::vector<Triangle>>(loadObj(std::filesystem::u8path(next.objPath)));
                     if(next.model==Model::Imported&&geometry->empty())throw std::runtime_error("Scene needs an OBJ mesh.");
                     settings=next;imported=geometry;selected=0;layout();message=L"Scene restored.";break;}
                 case IdExport:{if(frame.pixels.empty()||frame.revision!=revision){message=L"Wait for the current render before exporting.";break;}
                     auto p=fileDialog(true,L"Bitmap image\0*.bmp\0\0",L"bmp",L"lighting-study.bmp");if(!p.empty()){saveBmp(p,frame.pixels,frame.width,frame.height);message=L"Exported render without UI handles ("+std::to_wstring(frame.samples)+L" samples).";}break;}
-                case IdReset:settings=Settings();settings.lightPosition={-2.5f,3.6f,2};settings.lightDirection=unit(Vec(0,1.5f,0)-settings.lightPosition);selected=0;layout();break;
+                case IdReset:settings=Settings();settings.lightPosition={-1.8f,3.3f,1.5f};settings.lightDirection=unit(Vec(0,1.5f,0)-settings.lightPosition);selected=0;layout();break;
                 case IdAim:settings.lightDirection=unit(settings.position[selected]+Vec(0,1.4f,0)-settings.lightPosition);syncBindings();changed(false);break;
                 case IdGround:settings.ground=SendMessageW(sender,BM_GETCHECK,0,0)==BST_CHECKED;changed(false);break;
                 case IdGray:settings.grayscale=SendMessageW(sender,BM_GETCHECK,0,0)==BST_CHECKED;changed(false);break;
@@ -425,7 +427,10 @@ struct App {
                     capture(smokePath);saveBmp(smokePath.parent_path()/L"smoke-render.bmp",frame.pixels,frame.width,frame.height);
                     PostQuitMessage(0);
                 }
-            }catch(...){PostQuitMessage(3);}
+            }catch(const std::exception& e){
+                std::ofstream log(smokePath.parent_path()/L"smoke-error.txt");log<<e.what()<<'\n';
+                capture(smokePath);PostQuitMessage(3);
+            }
         }
     }
 };
@@ -469,7 +474,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     int argc=0;LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&argc);
     if(argc>=3&&std::wstring(argv[1])==L"--smoke"){app->smoke=true;app->smokePath=argv[2];app->quality=0;app->smokeStart=GetTickCount64();}
     LocalFree(argv);
-    app->settings.lightPosition={-2.5f,3.6f,2};app->settings.lightDirection=unit(Vec(0,1.5f,0)-app->settings.lightPosition);
+    app->settings.lightPosition={-1.8f,3.3f,1.5f};app->settings.lightDirection=unit(Vec(0,1.5f,0)-app->settings.lightPosition);
     WNDCLASSW wc{};wc.style=CS_DBLCLKS;wc.lpfnWndProc=windowProc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hIcon=LoadIconW(nullptr,IDI_APPLICATION);wc.lpszClassName=L"ShadingHelpWindow";
     if(!RegisterClassW(&wc))return 1;
     HWND window=CreateWindowExW(0,wc.lpszClassName,L"Shading Help - Light & Form Studio",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1320,920,nullptr,nullptr,instance,nullptr);
