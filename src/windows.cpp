@@ -117,7 +117,7 @@ struct App {
             button(IdAim,L"Aim at selected model",x,y);y+=39;
             colorButton(L"Environment / shadow fill",settings.fillColor,x,y);
             slider(L"Environment strength",settings.fill,0,1,x,y);
-            combo(IdBounces,{L"0 bounces - direct + environment",L"1 surface bounce",L"2 surface bounces",L"4 surface bounces",L"8 surface bounces"},settings.bounces==0?0:settings.bounces==1?1:settings.bounces==2?2:settings.bounces==4?3:4,x,y);y+=38;
+            combo(IdBounces,{L"0 bounces - direct + environment",L"1 surface bounce",L"2 surface bounces",L"3 surface bounces",L"4 surface bounces",L"5 surface bounces",L"6 surface bounces",L"7 surface bounces",L"8 surface bounces"},settings.bounces,x,y);y+=38;
             label(L"Shadow hue comes from the fill and reflected light.",x,y,290,40);
         } else if(page==1) {
             combo(IdObject,settings.model==Model::Both?std::vector<std::wstring>{L"Head material",L"Sphere material"}:std::vector<std::wstring>{L"Selected model material"},selected,x,y);y+=40;
@@ -314,7 +314,7 @@ struct App {
                     case IdLightType:settings.lightType=LightType(i);panelPage();break;
                     case IdObject:selected=std::clamp(i,0,1);panelPage();return;
                     case IdPoseJoint:joint=std::clamp(i,0,7);panelPage();return;
-                    case IdBounces:{const int b[]={0,1,2,4,8};settings.bounces=b[std::clamp(i,0,4)];break;}
+                    case IdBounces:settings.bounces=std::clamp(i,0,8);break;
                 }
                 changed(false);return;
             }
@@ -450,9 +450,13 @@ struct App {
                     SetWindowTextW(bindings[0].edit,L"35");
                     command(IdEditFirst,EN_KILLFOCUS,bindings[0].edit);
                     if(settings.intensity!=35)throw std::runtime_error("Numeric intensity input smoke test failed.");
+                    settings.bounces=3;panelPage();
+                    if(SendMessageW(GetDlgItem(window,IdBounces),CB_GETCURSEL,0,0)!=3)
+                        throw std::runtime_error("Bounce count label does not match the renderer.");
+                    settings.bounces=2;
                     settings.model=Model::Head;settings.position[0]=Vec();settings.lightDirection=unit(Vec(0,1.4f,0)-settings.lightPosition);
                     page=0;layout();smokeStage=1;
-                } else if(frame.samples>=32) {
+                } else if(frame.samples>=64) {
                     capture(smokePath);saveBmp(smokePath.parent_path()/L"smoke-render.bmp",frame.pixels,frame.width,frame.height);
                     for(int tab=1;tab<5;++tab) {
                         command(IdTabFirst+tab,BN_CLICKED,tabButtons[tab]);
