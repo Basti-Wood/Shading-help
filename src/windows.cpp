@@ -23,11 +23,12 @@ constexpr COLORREF gold=RGB(244,188,96),cyan=RGB(112,206,218);
 enum {IdModel=101,IdView,IdQuality,IdSave,IdLoad,IdExport,IdReset,IdTabs,
       IdLightType=201,IdAim,IdObject,IdSurface,IdFloorColor,IdLightColor,IdFillColor,
       IdGround,IdGray,IdBounces,IdImport,IdHome,IdPoseJoint,IdPoseReset,IdHandles,IdPreset,
-      IdColorFirst=300,IdSliderFirst=1000,IdEditFirst=2000};
+      IdColorFirst=300,IdTabFirst=400,IdSliderFirst=1000,IdEditFirst=2000};
 struct Binding {HWND slider=nullptr,edit=nullptr;float* value=nullptr;float lo=0,hi=1;};
 struct ColorBinding {HWND button;Vec* color;std::wstring name;};
 struct App {
-    HWND window=nullptr,tabs=nullptr,modelCombo=nullptr,viewCombo=nullptr,qualityCombo=nullptr;
+    HWND window=nullptr,modelCombo=nullptr,viewCombo=nullptr,qualityCombo=nullptr;
+    std::array<HWND,5> tabButtons{};
     HFONT font=nullptr,titleFont=nullptr,smallFont=nullptr;
     HBRUSH panelBrush=nullptr,bgBrush=nullptr;
     Settings settings;
@@ -167,12 +168,12 @@ struct App {
         control(L"BUTTON",L"Open scene",IdLoad,w-335,24,100,30,BS_PUSHBUTTON,false);
         control(L"BUTTON",L"Export BMP",IdExport,w-225,24,100,30,BS_PUSHBUTTON,false);
         control(L"BUTTON",L"Reset all",IdReset,w-115,24,95,30,BS_PUSHBUTTON,false);
-        tabs=control(WC_TABCONTROLW,L"",IdTabs,w-340,114,320,30,TCS_BUTTONS|TCS_FLATBUTTONS|TCS_FIXEDWIDTH,false);
         const wchar_t* names[]={L"Light",L"Surface",L"Object",L"View",L"Pose"};
-        for(int i=0;i<5;++i){TCITEMW t{};t.mask=TCIF_TEXT;t.pszText=const_cast<LPWSTR>(names[i]);SendMessageW(tabs,TCM_INSERTITEMW,i,reinterpret_cast<LPARAM>(&t));}
-        // Insertion recalculates the native tab width; size after the last item.
-        SendMessageW(tabs,TCM_SETITEMSIZE,0,MAKELPARAM(px(58),px(26)));
-        TabCtrl_SetCurSel(tabs,page);
+        for(int i=0;i<5;++i) {
+            tabButtons[i]=control(L"BUTTON",names[i],IdTabFirst+i,w-340+i*64,114,63,30,
+                BS_AUTORADIOBUTTON|BS_PUSHLIKE|(i==0?WS_GROUP:0),false);
+            SendMessageW(tabButtons[i],BM_SETCHECK,i==page?BST_CHECKED:BST_UNCHECKED,0);
+        }
         viewport={px(20),px(119),width-px(365),height-px(115)};
         building=false;panelPage();changed(false);
     }
@@ -290,6 +291,11 @@ struct App {
     void command(int id,int notification,HWND sender) {
         if(building)return;
         try {
+            if(id>=IdTabFirst&&id<IdTabFirst+5&&notification==BN_CLICKED) {
+                page=id-IdTabFirst;
+                for(int i=0;i<5;++i)SendMessageW(tabButtons[i],BM_SETCHECK,i==page?BST_CHECKED:BST_UNCHECKED,0);
+                panelPage();return;
+            }
             if(id>=IdColorFirst&&id<IdColorFirst+int(colors.size())){if(notification==BN_CLICKED)pickColor(id-IdColorFirst);return;}
             if(id>=IdEditFirst&&id<IdEditFirst+int(bindings.size())) {
                 if(notification==EN_KILLFOCUS) {
@@ -426,8 +432,8 @@ struct App {
             if(frame.revision!=revision||frame.samples<8)return;
             try {
                 if(smokeStage==0) {
-                    RECT tabClient{},lastTab{};GetClientRect(tabs,&tabClient);TabCtrl_GetItemRect(tabs,4,&lastTab);
-                    if(lastTab.right>tabClient.right)throw std::runtime_error("Settings tabs exceed the available width.");
+                    RECT lastTab{};GetWindowRect(tabButtons[4],&lastTab);MapWindowPoints(HWND_DESKTOP,window,reinterpret_cast<POINT*>(&lastTab),2);
+                    if(lastTab.right>width-px(10))throw std::runtime_error("Settings tabs exceed the available width.");
                     // Exercise the actual window command and pointer handlers.
                     POINT center;screen({0,1.7f,.5f},center);
                     settings.model=Model::Ball;settings.position[0]=Vec();changed(false);
@@ -449,7 +455,7 @@ struct App {
                 } else if(frame.samples>=32) {
                     capture(smokePath);saveBmp(smokePath.parent_path()/L"smoke-render.bmp",frame.pixels,frame.width,frame.height);
                     for(int tab=1;tab<5;++tab) {
-                        page=tab;TabCtrl_SetCurSel(tabs,page);panelPage();
+                        command(IdTabFirst+tab,BN_CLICKED,tabButtons[tab]);
                         capture(smokePath.parent_path()/(L"smoke-tab-"+std::to_wstring(tab)+L".bmp"));
                     }
                     PostQuitMessage(0);
@@ -475,7 +481,6 @@ LRESULT CALLBACK windowProc(HWND window,UINT msg,WPARAM w,LPARAM l) {
         case WM_CTLCOLOREDIT:{HDC dc=reinterpret_cast<HDC>(w);SetTextColor(dc,ink);SetBkColor(dc,bg);return reinterpret_cast<LRESULT>(app->bgBrush);}
         case WM_DRAWITEM:app->drawColor(*reinterpret_cast<DRAWITEMSTRUCT*>(l));return TRUE;
         case WM_COMMAND:app->command(LOWORD(w),HIWORD(w),reinterpret_cast<HWND>(l));return 0;
-        case WM_NOTIFY:if(reinterpret_cast<NMHDR*>(l)->idFrom==IdTabs&&reinterpret_cast<NMHDR*>(l)->code==TCN_SELCHANGE){app->page=TabCtrl_GetCurSel(app->tabs);app->panelPage();}return 0;
         case WM_HSCROLL:app->onSlider(reinterpret_cast<HWND>(l),LOWORD(w));return 0;
         case WM_TIMER:app->tick();return 0;
         case WM_LBUTTONDOWN:case WM_RBUTTONDOWN:case WM_MBUTTONDOWN:app->down({GET_X_LPARAM(l),GET_Y_LPARAM(l)},msg);return 0;
