@@ -168,9 +168,10 @@ struct App {
         control(L"BUTTON",L"Export BMP",IdExport,w-225,24,100,30,BS_PUSHBUTTON,false);
         control(L"BUTTON",L"Reset all",IdReset,w-115,24,95,30,BS_PUSHBUTTON,false);
         tabs=control(WC_TABCONTROLW,L"",IdTabs,w-340,114,320,30,TCS_BUTTONS|TCS_FLATBUTTONS|TCS_FIXEDWIDTH,false);
-        SendMessageW(tabs,TCM_SETITEMSIZE,0,MAKELPARAM(px(61),px(26)));
         const wchar_t* names[]={L"Light",L"Surface",L"Object",L"View",L"Pose"};
         for(int i=0;i<5;++i){TCITEMW t{};t.mask=TCIF_TEXT;t.pszText=const_cast<LPWSTR>(names[i]);SendMessageW(tabs,TCM_INSERTITEMW,i,reinterpret_cast<LPARAM>(&t));}
+        // Insertion recalculates the native tab width; size after the last item.
+        SendMessageW(tabs,TCM_SETITEMSIZE,0,MAKELPARAM(px(58),px(26)));
         TabCtrl_SetCurSel(tabs,page);
         viewport={px(20),px(119),width-px(365),height-px(115)};
         building=false;panelPage();changed(false);
@@ -425,6 +426,8 @@ struct App {
             if(frame.revision!=revision||frame.samples<8)return;
             try {
                 if(smokeStage==0) {
+                    RECT tabClient{},lastTab{};GetClientRect(tabs,&tabClient);TabCtrl_GetItemRect(tabs,4,&lastTab);
+                    if(lastTab.right>tabClient.right)throw std::runtime_error("Settings tabs exceed the available width.");
                     // Exercise the actual window command and pointer handlers.
                     POINT center;screen({0,1.7f,.5f},center);
                     settings.model=Model::Ball;settings.position[0]=Vec();changed(false);
