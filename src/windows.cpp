@@ -43,7 +43,7 @@ struct App {
     std::vector<ColorBinding> colors;
     bool building=false,handles=true,smoke=false;
     int smokeStage=0;
-    ULONGLONG smokeStart=0,lastMotion=0;
+    ULONGLONG smokeStart=0;
     enum class Drag {None,Orbit,Pan,Model,RotateModel,Light,Direction} drag=Drag::None;
     POINT last{};
     Vec dragAnchor,dragPlane,dragOffset;
@@ -80,7 +80,7 @@ struct App {
         SendMessageW(slide,TBM_SETRANGE,TRUE,MAKELPARAM(0,1000));
         SendMessageW(slide,TBM_SETPOS,TRUE,int(1000*std::clamp((value-lo)/(hi-lo),0.f,1.f)));
         HWND edit=control(L"EDIT",number(value),IdEditFirst+i,x+221,y,69,24,WS_BORDER|ES_AUTOHSCROLL);
-        bindings.push_back({slide,edit,&value,lo,hi});y+=32;
+        bindings.push_back({slide,edit,&value,lo,hi});y+=28;
     }
     void vectorFields(const std::wstring& name,Vec& value,int x,int& y) {
         label(name,x,y);y+=22;
@@ -90,11 +90,11 @@ struct App {
             HWND edit=control(L"EDIT",number(*p),IdEditFirst+i,left+17,y,73,24,WS_BORDER|ES_AUTOHSCROLL);
             bindings.push_back({nullptr,edit,p,-50,50});
         }
-        y+=34;
+        y+=30;
     }
     void colorButton(const std::wstring& name,Vec& color,int x,int& y) {
         HWND c=control(L"BUTTON",name,IdColorFirst+int(colors.size()),x,y,290,34,BS_OWNERDRAW);
-        colors.push_back({c,&color,name});y+=43;
+        colors.push_back({c,&color,name});y+=40;
     }
     void setupFonts() {
         for(HFONT f:{font,titleFont,smallFont})if(f)DeleteObject(f);
@@ -104,7 +104,7 @@ struct App {
     }
     void panelPage() {
         building=true;for(HWND c:pageControls)DestroyWindow(c);pageControls.clear();bindings.clear();colors.clear();
-        int x=width-px(325);x=int(x/dpi);int y=157;
+        int x=width-px(325);x=int(x/dpi);int y=151;
         if(page==0) {
             combo(IdLightType,{L"Spot / disk area light",L"Point light (omnidirectional)",L"Directional light (sun)"},int(settings.lightType),x,y);y+=36;
             colorButton(L"Light color",settings.lightColor,x,y);
@@ -167,7 +167,8 @@ struct App {
         control(L"BUTTON",L"Open scene",IdLoad,w-335,24,100,30,BS_PUSHBUTTON,false);
         control(L"BUTTON",L"Export BMP",IdExport,w-225,24,100,30,BS_PUSHBUTTON,false);
         control(L"BUTTON",L"Reset all",IdReset,w-115,24,95,30,BS_PUSHBUTTON,false);
-        tabs=control(WC_TABCONTROLW,L"",IdTabs,w-340,114,320,30,TCS_BUTTONS|TCS_FLATBUTTONS,false);
+        tabs=control(WC_TABCONTROLW,L"",IdTabs,w-340,114,320,30,TCS_BUTTONS|TCS_FLATBUTTONS|TCS_FIXEDWIDTH,false);
+        SendMessageW(tabs,TCM_SETITEMSIZE,0,MAKELPARAM(px(61),px(26)));
         const wchar_t* names[]={L"Light",L"Surface",L"Object",L"View",L"Pose"};
         for(int i=0;i<5;++i){TCITEMW t{};t.mask=TCIF_TEXT;t.pszText=const_cast<LPWSTR>(names[i]);SendMessageW(tabs,TCM_INSERTITEMW,i,reinterpret_cast<LPARAM>(&t));}
         TabCtrl_SetCurSel(tabs,page);
@@ -188,7 +189,7 @@ struct App {
         float scale=std::min(1.f,float(moving?300:quality==0?600:quality==1?950:1400)/std::max(vw,vh));
         int limit=moving?8:quality==0?64:quality==1?512:2048;
         revision=renderer.request(settings,std::max(1,int(vw*scale)),std::max(1,int(vh*scale)),limit,imported);
-        lastMotion=GetTickCount64();InvalidateRect(window,nullptr,FALSE);
+        InvalidateRect(window,nullptr,FALSE);
     }
     Camera camera()const{return Camera(settings,float(viewport.right-viewport.left)/std::max(1L,viewport.bottom-viewport.top));}
     Ray mouseRay(POINT p)const{return camera().ray(float(p.x-viewport.left)/(viewport.right-viewport.left),float(p.y-viewport.top)/(viewport.bottom-viewport.top));}
@@ -241,7 +242,7 @@ struct App {
         std::wstring status=current?std::to_wstring(frame.samples)+L" samples / pixel":L"Updating lighting...";
         status+=L"   |   "+std::to_wstring(settings.bounces)+L" surface bounces   |   CPU path tracing";
         text(dc,status,{px(20),height-px(106),viewport.right,height-px(82)},gold,smallFont);
-        text(dc,L"Drag model: move   /   Shift: height   /   Alt: rotate   /   Right drag: orbit   /   Wheel: zoom",{px(20),height-px(79),viewport.right,height-px(55)},muted,smallFont);
+        text(dc,L"Drag: move   /   Shift: height   /   Alt: rotate   /   Right drag: orbit   /   Wheel: zoom",{px(20),height-px(79),viewport.right,height-px(55)},muted,smallFont);
         text(dc,message,{px(20),height-px(49),viewport.right,height-px(12)},ink,smallFont,DT_LEFT|DT_WORDBREAK);
     }
     void paint() {
@@ -320,7 +321,7 @@ struct App {
                     settings=next;imported=geometry;selected=0;layout();message=L"Scene restored.";break;}
                 case IdExport:{if(frame.pixels.empty()||frame.revision!=revision){message=L"Wait for the current render before exporting.";break;}
                     auto p=fileDialog(true,L"Bitmap image\0*.bmp\0\0",L"bmp",L"lighting-study.bmp");if(!p.empty()){saveBmp(p,frame.pixels,frame.width,frame.height);message=L"Exported render without UI handles ("+std::to_wstring(frame.samples)+L" samples).";}break;}
-                case IdReset:settings=Settings();settings.lightPosition={-1.8f,3.3f,1.5f};settings.lightDirection=unit(Vec(0,1.5f,0)-settings.lightPosition);selected=0;layout();break;
+                case IdReset:settings=Settings();settings.intensity=35;settings.lightPosition={-1.8f,3.3f,1.5f};settings.lightDirection=unit(Vec(0,1.5f,0)-settings.lightPosition);selected=0;layout();break;
                 case IdAim:settings.lightDirection=unit(settings.position[selected]+Vec(0,1.4f,0)-settings.lightPosition);syncBindings();changed(false);break;
                 case IdGround:settings.ground=SendMessageW(sender,BM_GETCHECK,0,0)==BST_CHECKED;changed(false);break;
                 case IdGray:settings.grayscale=SendMessageW(sender,BM_GETCHECK,0,0)==BST_CHECKED;changed(false);break;
@@ -402,7 +403,18 @@ struct App {
         BITMAPINFO info{};info.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);info.bmiHeader.biWidth=width;info.bmiHeader.biHeight=-height;
         info.bmiHeader.biPlanes=1;info.bmiHeader.biBitCount=32;void* bits=nullptr;
         HBITMAP bitmap=CreateDIBSection(screenDC,&info,DIB_RGB_COLORS,&bits,nullptr,0);HGDIOBJ old=SelectObject(memory,bitmap);
-        BitBlt(memory,0,0,width,height,screenDC,0,0,SRCCOPY);GdiFlush();
+        // Render our actual client and native controls into the bitmap. This also
+        // captures any part outside a small CI runner's physical screen.
+        draw(memory);
+        for(HWND child=GetWindow(window,GW_CHILD);child;child=GetWindow(child,GW_HWNDNEXT)) {
+            if(!IsWindowVisible(child))continue;
+            RECT r;GetWindowRect(child,&r);MapWindowPoints(HWND_DESKTOP,window,reinterpret_cast<POINT*>(&r),2);
+            int saved=SaveDC(memory);IntersectClipRect(memory,r.left,r.top,r.right,r.bottom);
+            SetViewportOrgEx(memory,r.left,r.top,nullptr);
+            SendMessageW(child,WM_PRINT,reinterpret_cast<WPARAM>(memory),PRF_CLIENT|PRF_CHILDREN|PRF_ERASEBKGND);
+            RestoreDC(memory,saved);
+        }
+        GdiFlush();
         std::vector<uint32_t> pixels(size_t(width)*height);std::copy_n(static_cast<uint32_t*>(bits),pixels.size(),pixels.begin());
         SelectObject(memory,old);DeleteObject(bitmap);DeleteDC(memory);ReleaseDC(window,screenDC);saveBmp(path,pixels,width,height);
     }
@@ -421,10 +433,22 @@ struct App {
                     POINT light;screen(settings.lightPosition,light);Vec before=settings.lightPosition;
                     down(light,WM_LBUTTONDOWN);move({light.x+px(20),light.y+px(10)});up();
                     if(length(settings.lightPosition-before)<.001f)throw std::runtime_error("Light drag smoke test failed.");
+                    POINT arrow;screen(settings.lightPosition+unit(settings.lightDirection)*1.25f,arrow);before=settings.lightDirection;
+                    down(arrow,WM_LBUTTONDOWN);move({arrow.x+px(24),arrow.y-px(12)});up();
+                    if(length(settings.lightDirection-before)<.001f||std::abs(length(settings.lightDirection)-1)>.001f)
+                        throw std::runtime_error("Light direction drag smoke test failed.");
+                    // Commit an exact numeric intensity through the actual edit handler.
+                    SetWindowTextW(bindings[0].edit,L"35");
+                    command(IdEditFirst,EN_KILLFOCUS,bindings[0].edit);
+                    if(settings.intensity!=35)throw std::runtime_error("Numeric intensity input smoke test failed.");
                     settings.model=Model::Head;settings.position[0]=Vec();settings.lightDirection=unit(Vec(0,1.4f,0)-settings.lightPosition);
                     page=0;layout();smokeStage=1;
                 } else if(frame.samples>=32) {
                     capture(smokePath);saveBmp(smokePath.parent_path()/L"smoke-render.bmp",frame.pixels,frame.width,frame.height);
+                    for(int tab=1;tab<5;++tab) {
+                        page=tab;TabCtrl_SetCurSel(tabs,page);panelPage();
+                        capture(smokePath.parent_path()/(L"smoke-tab-"+std::to_wstring(tab)+L".bmp"));
+                    }
                     PostQuitMessage(0);
                 }
             }catch(const std::exception& e){
@@ -441,7 +465,7 @@ LRESULT CALLBACK windowProc(HWND window,UINT msg,WPARAM w,LPARAM l) {
         case WM_CREATE:app->window=window;app->dpi=GetDpiForWindow(window)/96.f;app->setupFonts();app->bgBrush=CreateSolidBrush(bg);app->panelBrush=CreateSolidBrush(panel);SetTimer(window,1,60,nullptr);return 0;
         case WM_SIZE:if(w!=SIZE_MINIMIZED&&app->font)app->layout();return 0;
         case WM_DPICHANGED:{app->dpi=HIWORD(w)/96.f;app->setupFonts();auto r=reinterpret_cast<RECT*>(l);SetWindowPos(window,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);return 0;}
-        case WM_GETMINMAXINFO:{auto m=reinterpret_cast<MINMAXINFO*>(l);m->ptMinTrackSize={app->px(1060),app->px(780)};return 0;}
+        case WM_GETMINMAXINFO:{auto m=reinterpret_cast<MINMAXINFO*>(l);m->ptMinTrackSize={app->px(1020),app->px(760)};return 0;}
         case WM_PAINT:app->paint();return 0;
         case WM_ERASEBKGND:return 1;
         case WM_CTLCOLORSTATIC:case WM_CTLCOLORBTN:{HDC dc=reinterpret_cast<HDC>(w);SetTextColor(dc,ink);SetBkColor(dc,panel);return reinterpret_cast<LRESULT>(app->panelBrush);}
@@ -474,7 +498,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show) {
     int argc=0;LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&argc);
     if(argc>=3&&std::wstring(argv[1])==L"--smoke"){app->smoke=true;app->smokePath=argv[2];app->quality=0;app->smokeStart=GetTickCount64();}
     LocalFree(argv);
-    app->settings.lightPosition={-1.8f,3.3f,1.5f};app->settings.lightDirection=unit(Vec(0,1.5f,0)-app->settings.lightPosition);
+    app->settings.intensity=35;app->settings.lightPosition={-1.8f,3.3f,1.5f};app->settings.lightDirection=unit(Vec(0,1.5f,0)-app->settings.lightPosition);
     WNDCLASSW wc{};wc.style=CS_DBLCLKS;wc.lpfnWndProc=windowProc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.hIcon=LoadIconW(nullptr,IDI_APPLICATION);wc.lpszClassName=L"ShadingHelpWindow";
     if(!RegisterClassW(&wc))return 1;
     HWND window=CreateWindowExW(0,wc.lpszClassName,L"Shading Help - Light & Form Studio",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1320,920,nullptr,nullptr,instance,nullptr);

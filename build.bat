@@ -35,6 +35,8 @@ cl /nologo /std:c++17 /O2 /EHsc /MT /W4 /utf-8 /Fo:build\obj\ src\core.cpp src\c
 if errorlevel 1 goto failed
 copy /y README.md dist\README.md >nul
 if exist LICENSE copy /y LICENSE dist\LICENSE >nul
+if not exist dist\docs mkdir dist\docs
+copy /y docs\* dist\docs\ >nul
 echo.
 echo Success: dist\ShadingHelp.exe
 echo The app is portable and works offline. No runtime installation is required.
