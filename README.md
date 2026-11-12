@@ -2,11 +2,15 @@
 
 A free, native Windows light-and-form study app for drawing. C++17, Win32, no browser or webview, no account, no internet connection, no external runtime. The renderer runs on the CPU.
 
-![An actual render of the built-in planar study head](docs/planar-head.png)
+![The native Windows application, captured during its automated UI test](docs/windows-app.png)
 
 ## Get the Windows application
 
 Download the **ShadingHelp-Windows-x64** artifact from a successful [Windows build](https://github.com/Basti-Wood/Shading-help/actions/workflows/windows.yml), extract it, and run `ShadingHelp.exe`. GitHub may require sign-in to download build artifacts. The executable is unsigned and does not need installation.
+
+**[Download the verified Windows x64 build](https://github.com/Basti-Wood/Shading-help/actions/runs/43002122637/artifacts/13847140801)** · **[Successful build and tests](https://github.com/Basti-Wood/Shading-help/actions/runs/43002122637)**
+
+This build passed all 32 numerical/renderer checks on Windows and Linux, including Linux address/undefined-behavior sanitizers. The native Windows smoke test also checked model dragging, light-position dragging, direction-arrow dragging, exact numeric input, bounce-count display, and access to all five settings pages. The screenshot above is captured from that build. Build artifacts have a retention period; use the latest successful build or compile from source if an older download expires.
 
 Or compile it yourself:
 
