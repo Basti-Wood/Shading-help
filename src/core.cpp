@@ -228,6 +228,12 @@ static void mannequin(Scene& s,const Settings& p) {
         ellipsoid(s,ankle+Vec(0,-.025f,.10f),{.11f,.08f,.22f},8,4);
     }
 }
+bool sameGeometry(const Settings& a,const Settings& b) {
+    auto equal=[](Vec x,Vec y){return x.x==y.x&&x.y==y.y&&x.z==y.z;};
+    if(a.model!=b.model||a.jointPitch!=b.jointPitch||a.jointSpread!=b.jointSpread)return false;
+    for(int i=0;i<2;++i)if(!equal(a.position[i],b.position[i])||!equal(a.rotation[i],b.rotation[i]))return false;
+    return true;
+}
 Scene makeScene(const Settings& s,const std::vector<Triangle>& imported) {
     Scene scene;scene.ground=s.ground;
     scene.albedo={fromSrgb(s.surface[0]),fromSrgb(s.surface[1]),fromSrgb(s.floorColor)};
@@ -235,6 +241,9 @@ Scene makeScene(const Settings& s,const std::vector<Triangle>& imported) {
     if(s.model==Model::Mannequin)mannequin(scene,s);
     if(s.model==Model::Imported) {scene.triangles=imported;for(auto& t:scene.triangles){t.material=0;t.object=0;}}
     Vec pivot{0,1.4f,0};
+    if(s.model==Model::Imported&&!imported.empty()) {
+        Bounds b;for(const auto& t:imported)for(Vec v:{t.a,t.b,t.c})b.add(v);pivot=(b.lo+b.hi)*.5f;
+    }
     for(auto& t:scene.triangles)for(Vec* p:{&t.a,&t.b,&t.c})*p=rotate(*p-pivot,s.rotation[0])+pivot+s.position[0];
     for(auto& b:scene.spheres)b.center=rotate(b.center-pivot,s.rotation[0])+pivot+s.position[0];
     if(s.model==Model::Ball||s.model==Model::Both) {
@@ -244,6 +253,7 @@ Scene makeScene(const Settings& s,const std::vector<Triangle>& imported) {
 }
 
 std::vector<Triangle> loadObj(const std::filesystem::path& path) {
+    if(std::filesystem::file_size(path)>64*1024*1024)throw std::runtime_error("Model exceeds the 64 MB limit.");
     std::ifstream in(path);if(!in)throw std::runtime_error("Cannot open OBJ file.");
     std::vector<Vec> vertices;std::vector<Triangle> triangles;std::string line;Bounds bounds;
     size_t bytes=0;
@@ -274,9 +284,7 @@ std::vector<Triangle> loadObj(const std::filesystem::path& path) {
             }
         }
     }
-    if(triangles.empty()||bounds.hi.y-bounds.lo.y<1e-7f)throw std::runtime_error("OBJ contains no usable upright geometry.");
-    float scale=2.8f/(bounds.hi.y-bounds.lo.y);Vec center=(bounds.lo+bounds.hi)*.5f;center.y=bounds.lo.y;
-    for(auto& t:triangles)for(Vec* v:{&t.a,&t.b,&t.c})*v=(*v-center)*scale;
+    normalizeMesh(triangles);
     return triangles;
 }
 
@@ -329,7 +337,8 @@ Contributions trace(const Scene& scene,const Settings& s,Ray ray,Rng& rng) {
 }
 Vec samplePixel(const Scene& scene,const Settings& s,const Camera& camera,int x,int y,int w,int h,uint32_t sample) {
     uint32_t hash=(uint32_t(y*w+x)+1)*9781u+(sample+1)*6271u;
-    Rng rng(hash);Ray ray=camera.ray((x+rng.next())/w,(y+rng.next())/h);
+    Rng rng(hash);float jitterX=rng.next(),jitterY=rng.next();
+    Ray ray=camera.ray((x+jitterX)/w,(y+jitterY)/h);
     if(s.view==View::Albedo||s.view==View::Normals) {
         Hit hit;if(!scene.intersect(ray,hit))return Vec(.04f);
         return s.view==View::Albedo?scene.albedo[hit.material]:(hit.normal+Vec(1))*.5f;

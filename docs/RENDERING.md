@@ -54,6 +54,16 @@ Radiance samples are averaged in linear space. Exposure multiplies the average b
 
 There is no denoiser. Shadow edges, area lights and bounces converge as samples accumulate. Dragging starts a lower-resolution job; releasing starts a new full-resolution accumulation. Every settings change discards the old accumulation. Samples have deterministic per-pixel seeds, independent of worker order. A BVH accelerates triangle intersection. Spheres and the infinite ground are intersected analytically.
 
+## GPU backend
+
+The Windows app uses a Direct3D 11 compute shader (`cs_5_0`) for camera rays, BVH traversal, analytic sphere/ground intersections, direct-light shadow rays, diffuse hemisphere bounces, progressive accumulation, exposure, grayscale and sRGB conversion. It implements the same estimator as the CPU reference. This is general compute ray tracing; it does not require DXR or an RTX GPU.
+
+Geometry is uploaded as structured buffers. The renderer reuses BVH geometry when only the camera, light or material changes. Each dispatch covers a strip of at most 64 rows, with cancellation checks between strips. Completed passes are synchronized to bound queued work and interaction latency. Readback supplies the native Win32 viewport, image export and the numeric pixel inspector. UI drawing, import, scene preparation and picking remain CPU work.
+
+Hardware selection excludes software adapters and prefers compatible adapters with more dedicated memory. Direct3D feature level 11_0 is required. If initialization, shader compilation or device execution fails, the app switches to the CPU renderer and exposes the reason in View. The CPU option can also be selected explicitly.
+
+The build tests HLSL on Microsoft's WARP software device, comparing linear radiance and display conversion with CPU results across lights, models, views, bounce settings and awkward image dimensions. A constant-environment test checks absolute normalization, and a reset test checks that previous accumulation cannot leak into a changed scene. Floating-point differences can change individual stochastic paths, so image comparisons use a numeric tolerance. WARP is a shader correctness check, not a physical GPU benchmark; a physical adapter is tested separately if available on the runner.
+
 ## References
 
 - [Physically Based Rendering, 4th edition: A Better Path Tracer](https://pbr-book.org/4ed/Light_Transport_I_Surface_Reflection/A_Better_Path_Tracer) — rendering-equation and path-sampling reference. This app implements a smaller diffuse-only analytic-light estimator, not PBRT's full integrator.

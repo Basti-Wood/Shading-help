@@ -103,7 +103,10 @@ private:
     int buildNode(int begin,int end);
 };
 Scene makeScene(const Settings& settings,const std::vector<Triangle>& imported={});
+bool sameGeometry(const Settings& a,const Settings& b);
 std::vector<Triangle> loadObj(const std::filesystem::path& path);
+std::vector<Triangle> loadMesh(const std::filesystem::path& path);
+void normalizeMesh(std::vector<Triangle>& triangles);
 struct Contributions { Vec direct,indirect; };
 Vec directLighting(const Scene& scene,const Settings& s,const Hit& h,Rng& rng);
 Contributions trace(const Scene& scene,const Settings& s,Ray ray,Rng& rng);

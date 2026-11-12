@@ -57,5 +57,5 @@ jobs:
       - name: Compile with warnings as errors and sanitizers
         run: |
           mkdir -p build
-          g++ -std=c++17 -O1 -g -pthread -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined src/core.cpp src/progressive.cpp tests/tests.cpp -o build/tests
+          g++ -std=c++17 -O1 -g -pthread -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined src/core.cpp src/mesh.cpp src/gpu.cpp src/progressive.cpp tests/tests.cpp -o build/tests
           ./build/tests

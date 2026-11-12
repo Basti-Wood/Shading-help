@@ -6,6 +6,10 @@ int main(int argc,char** argv) {
     try {
         shading::Settings s;
         std::string model=argc>2?argv[2]:"head";
+        std::vector<shading::Triangle> imported;
+        if(std::filesystem::u8path(model).has_extension()) {
+            imported=shading::loadMesh(std::filesystem::u8path(model));s.model=shading::Model::Imported;
+        }
         if(model=="ball")s.model=shading::Model::Ball;
         if(model=="both"){s.model=shading::Model::Both;s.position[0].x=-1.2f;s.position[1].x=1.2f;s.cameraDistance=10;}
         if(model=="mannequin"){s.model=shading::Model::Mannequin;s.jointSpread[0]=55;s.jointPitch[1]=65;}
@@ -15,7 +19,7 @@ int main(int argc,char** argv) {
         int samples=argc>3?std::stoi(argv[3]):64;
         int width=argc>4?std::stoi(argv[4]):800,height=argc>5?std::stoi(argv[5]):800;
         auto begin=std::chrono::steady_clock::now();
-        auto pixels=shading::render(s,width,height,samples);
+        auto pixels=shading::render(s,width,height,samples,imported);
         const char* path=argc>1?argv[1]:"render.bmp";shading::saveBmp(path,pixels,width,height);
         std::cout<<"Rendered "<<path<<" ("<<samples<<" spp) in "
                  <<std::chrono::duration<double>(std::chrono::steady_clock::now()-begin).count()<<" s\n";

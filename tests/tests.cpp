@@ -14,6 +14,7 @@ static void require(bool condition,const char* name) {
 }
 static bool near(float a,float b,float tolerance=1e-4f){return std::abs(a-b)<tolerance;}
 static bool near(Vec a,Vec b,float tolerance=1e-4f){return length(a-b)<tolerance;}
+#include "mesh_tests.hpp"
 int main() {
     auto temp=std::filesystem::current_path()/"build"/"test-data";
     std::filesystem::create_directories(temp);
@@ -97,8 +98,8 @@ int main() {
         require(std::filesystem::file_size(temp/"render.bmp")==54+32*32*4,"BMP output includes complete header and pixel data");
         {
             Progressive progressive;auto importedPtr=std::make_shared<const std::vector<Triangle>>();
-            progressive.request(s,256,256,512,importedPtr);s.model=Model::Ball;
-            int id=progressive.request(s,32,24,8,importedPtr);Frame frame;
+            progressive.request(s,256,256,512,importedPtr,false);s.model=Model::Ball;
+            int id=progressive.request(s,32,24,8,importedPtr,false);Frame frame;
             auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(15);
             while(std::chrono::steady_clock::now()<deadline) {
                 if(progressive.frame(frame,7,id))break;
@@ -107,6 +108,7 @@ int main() {
             require(frame.revision==id&&frame.samples==8&&frame.width==32&&frame.height==24,"progressive renderer cancels stale work and publishes latest scene");
             require(frame.pixels==render(s,32,24,8),"progressive accumulation matches reference renderer");
         }
+        meshTests(temp);
         std::filesystem::remove_all(temp);
         std::cout<<"All "<<checks<<" checks passed.\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}

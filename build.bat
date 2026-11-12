@@ -21,17 +21,23 @@ if not exist dist mkdir dist
 if not exist build\obj mkdir build\obj
 
 echo Building Shading Help for Windows...
-cl /nologo /std:c++17 /O2 /EHsc /MT /W4 /utf-8 /D_WIN32_WINNT=0x0A00 /Fo:build\obj\ src\core.cpp src\progressive.cpp src\windows.cpp /Fe:dist\ShadingHelp.exe /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib
+cl /nologo /std:c++17 /O2 /EHsc /MT /W4 /utf-8 /D_WIN32_WINNT=0x0A00 /Fo:build\obj\ src\core.cpp src\mesh.cpp src\gpu.cpp src\progressive.cpp src\windows.cpp /Fe:dist\ShadingHelp.exe /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib comctl32.lib comdlg32.lib shell32.lib d3d11.lib dxgi.lib d3dcompiler.lib
 if errorlevel 1 goto failed
 
 echo Building numerical and renderer tests...
-cl /nologo /std:c++17 /O2 /EHsc /MT /W4 /utf-8 /Fo:build\obj\ src\core.cpp src\progressive.cpp tests\tests.cpp /Fe:build\tests.exe
+cl /nologo /std:c++17 /O2 /EHsc /MT /W4 /utf-8 /Fo:build\obj\ src\core.cpp src\mesh.cpp src\gpu.cpp src\progressive.cpp tests\tests.cpp /Fe:build\tests.exe /link d3d11.lib dxgi.lib d3dcompiler.lib
 if errorlevel 1 goto failed
 build\tests.exe
 if errorlevel 1 goto failed
 
+echo Validating GPU shaders against the CPU reference using Direct3D WARP...
+cl /nologo /std:c++17 /O2 /EHsc /MT /W4 /utf-8 /Fo:build\obj\ src\core.cpp src\mesh.cpp src\gpu.cpp tests\gpu_tests.cpp /Fe:build\gpu-tests.exe /link d3d11.lib dxgi.lib d3dcompiler.lib
+if errorlevel 1 goto failed
+build\gpu-tests.exe
+if errorlevel 1 goto failed
+
 echo Building command-line renderer...
-cl /nologo /std:c++17 /O2 /EHsc /MT /W4 /utf-8 /Fo:build\obj\ src\core.cpp src\cli.cpp /Fe:build\shading-render.exe
+cl /nologo /std:c++17 /O2 /EHsc /MT /W4 /utf-8 /Fo:build\obj\ src\core.cpp src\mesh.cpp src\cli.cpp /Fe:build\shading-render.exe
 if errorlevel 1 goto failed
 copy /y README.md dist\README.md >nul
 if exist LICENSE copy /y LICENSE dist\LICENSE >nul

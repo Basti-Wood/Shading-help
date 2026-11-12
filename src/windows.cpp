@@ -9,6 +9,7 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include "progressive.hpp"
 #include <cstdio>
 #include <cwchar>
@@ -22,7 +23,7 @@ constexpr COLORREF bg=RGB(20,24,31),panel=RGB(29,34,43),ink=RGB(228,231,236),mut
 constexpr COLORREF gold=RGB(244,188,96),cyan=RGB(112,206,218);
 enum {IdModel=101,IdView,IdQuality,IdSave,IdLoad,IdExport,IdReset,IdTabs,
       IdLightType=201,IdAim,IdObject,IdSurface,IdFloorColor,IdLightColor,IdFillColor,
-      IdGround,IdGray,IdBounces,IdImport,IdHome,IdPoseJoint,IdPoseReset,IdHandles,IdPreset,
+      IdGround,IdGray,IdBounces,IdImport,IdHome,IdPoseJoint,IdPoseReset,IdHandles,IdPreset,IdBackend,IdImportHelp,
       IdColorFirst=300,IdTabFirst=400,IdSliderFirst=1000,IdEditFirst=2000};
 struct Binding {HWND slider=nullptr,edit=nullptr;float* value=nullptr;float lo=0,hi=1;};
 struct ColorBinding {HWND button;Vec* color;std::wstring name;};
@@ -33,6 +34,10 @@ struct App {
     HBRUSH panelBrush=nullptr,bgBrush=nullptr;
     Settings settings;
     Scene picking;
+    Settings pickingSettings;
+    const std::vector<Triangle>* pickingMesh=nullptr;
+    bool hasPicking=false,preferGpu=true;
+    HWND deviceLabel=nullptr;
     Progressive renderer;
     std::shared_ptr<const std::vector<Triangle>> imported=std::make_shared<const std::vector<Triangle>>();
     Frame frame;
@@ -53,6 +58,14 @@ struct App {
 
     int px(float n)const{return int(n*dpi+.5f);}
     int px(int n)const{return px(float(n));}
+    static std::wstring wide(const std::string& value) {
+        if(value.empty())return L"";
+        int n=MultiByteToWideChar(CP_UTF8,0,value.data(),int(value.size()),nullptr,0);
+        std::wstring text(size_t(n),L'\0');if(n)MultiByteToWideChar(CP_UTF8,0,value.data(),int(value.size()),text.data(),n);return text;
+    }
+    std::wstring deviceText()const {
+        return frame.samples?wide(frame.backend+": "+frame.device).substr(0,190):L"Preparing rendering device...";
+    }
     void text(HDC dc,std::wstring value,RECT r,COLORREF color=ink,HFONT use=nullptr,UINT flags=DT_LEFT|DT_VCENTER|DT_SINGLELINE) {
         SetBkMode(dc,TRANSPARENT);SetTextColor(dc,color);SelectObject(dc,use?use:font);
         DrawTextW(dc,value.c_str(),int(value.size()),&r,flags);
@@ -104,7 +117,7 @@ struct App {
         smallFont=CreateFontW(-px(12),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
     }
     void panelPage() {
-        building=true;for(HWND c:pageControls)DestroyWindow(c);pageControls.clear();bindings.clear();colors.clear();
+        building=true;deviceLabel=nullptr;for(HWND c:pageControls)DestroyWindow(c);pageControls.clear();bindings.clear();colors.clear();
         int x=width-px(325);x=int(x/dpi);int y=151;
         if(page==0) {
             combo(IdLightType,{L"Spot / disk area light",L"Point light (omnidirectional)",L"Directional light (sun)"},int(settings.lightType),x,y);y+=36;
@@ -135,17 +148,20 @@ struct App {
             slider(L"Pitch",settings.rotation[selected].x,-180,180,x,y);
             slider(L"Yaw",settings.rotation[selected].y,-180,180,x,y);
             slider(L"Roll",settings.rotation[selected].z,-180,180,x,y);
-            button(IdImport,L"Import a flat-shaded OBJ...",x,y);y+=42;
-            label(L"Built-in head: original planar study bust, not an Asaro scan. Import your own licensed Asaro mesh if you prefer.",x,y,290,76);y+=87;
+            button(IdImport,L"Import model (OBJ, STL, PLY)...",x,y);y+=38;
+            button(IdImportHelp,L"How to export from Blender",x,y);y+=40;
+            label(L"Drop a model file into the window, or use Import model. Geometry uses flat shading and the Surface color picker.",x,y,290,76);y+=87;
             label(L"Drag model: move on floor\nShift + drag: raise / lower\nAlt + drag: rotate\nSphere rotation does not change its appearance.",x,y,290,95);
         } else if(page==3) {
+            combo(IdBackend,{L"GPU when available (recommended)",L"CPU reference renderer"},preferGpu?0:1,x,y);y+=36;
+            deviceLabel=control(L"STATIC",deviceText(),0,x,y,290,48,SS_LEFT);y+=54;
             slider(L"Exposure (stops)",settings.exposure,-5,5,x,y);
             slider(L"Field of view (degrees)",settings.fov,15,85,x,y);
             slider(L"Camera roll",settings.cameraRoll,-180,180,x,y);
             checkbox(IdHandles,L"Show light and direction handles",handles,x,y);y+=37;
             button(IdHome,L"Frame the scene",x,y);y+=44;
-            label(L"Right drag / empty-space drag: orbit\nMiddle drag: pan\nWheel: zoom\nQ / E: roll camera\nH: show / hide handles\nF: frame scene",x,y,290,135);y+=145;
-            label(L"Exposure scales linear radiance by 2^stops. The display uses sRGB encoding and clips values above 1. Lower exposure to recover clipped highlights.",x,y,290,100);
+            label(L"Right drag / empty-space drag: orbit\nMiddle drag: pan\nWheel: zoom\nQ / E: roll camera\nH: show / hide handles\nF: frame scene",x,y,290,115);y+=125;
+            label(L"Exposure scales linear radiance by 2^stops. Lower exposure to recover clipped highlights. GPU mode uses the same diffuse lighting model.",x,y,290,80);
         } else {
             combo(IdPoseJoint,{L"Right shoulder",L"Right elbow",L"Left shoulder",L"Left elbow",L"Right hip",L"Right knee",L"Left hip",L"Left knee"},joint,x,y);y+=42;
             slider(L"Bend / swing",settings.jointPitch[joint],-150,150,x,y);
@@ -161,9 +177,10 @@ struct App {
         building=true;
         for(HWND c:headerControls)DestroyWindow(c);headerControls.clear();
         int w=int(width/dpi);
-        modelCombo=combo(IdModel,{L"Study: planar head",L"Study: sphere",L"Study: head + sphere",L"Study: mannequin",L"Study: imported OBJ"},int(settings.model),20,78,210,false);
+        modelCombo=combo(IdModel,{L"Study: planar head",L"Study: sphere",L"Study: head + sphere",L"Study: mannequin",L"Study: imported mesh"},int(settings.model),20,78,210,false);
         viewCombo=combo(IdView,{L"Combined lighting",L"Direct + environment",L"Bounce only",L"Surface color",L"Face normals"},int(settings.view),240,78,190,false);
         qualityCombo=combo(IdQuality,{L"Quick - 64 samples",L"Study - 512 samples",L"Fine - 2048 samples"},quality,440,78,190,false);
+        control(L"BUTTON",L"Import model",IdImport,w-555,24,100,30,BS_PUSHBUTTON,false);
         control(L"BUTTON",L"Save scene",IdSave,w-445,24,100,30,BS_PUSHBUTTON,false);
         control(L"BUTTON",L"Open scene",IdLoad,w-335,24,100,30,BS_PUSHBUTTON,false);
         control(L"BUTTON",L"Export BMP",IdExport,w-225,24,100,30,BS_PUSHBUTTON,false);
@@ -186,11 +203,15 @@ struct App {
         building=false;
     }
     void changed(bool moving) {
-        settings.validate();picking=makeScene(settings,*imported);
+        settings.validate();
+        if(!hasPicking||!sameGeometry(settings,pickingSettings)||pickingMesh!=imported.get()) {
+            picking=makeScene(settings,*imported);pickingSettings=settings;pickingMesh=imported.get();hasPicking=true;
+        }
+        picking.ground=settings.ground;
         int vw=std::max(1L,viewport.right-viewport.left),vh=std::max(1L,viewport.bottom-viewport.top);
         float scale=std::min(1.f,float(moving?300:quality==0?600:quality==1?950:1400)/std::max(vw,vh));
         int limit=moving?8:quality==0?64:quality==1?512:2048;
-        revision=renderer.request(settings,std::max(1,int(vw*scale)),std::max(1,int(vh*scale)),limit,imported);
+        revision=renderer.request(settings,std::max(1,int(vw*scale)),std::max(1,int(vh*scale)),limit,imported,preferGpu);
         InvalidateRect(window,nullptr,FALSE);
     }
     Camera camera()const{return Camera(settings,float(viewport.right-viewport.left)/std::max(1L,viewport.bottom-viewport.top));}
@@ -242,7 +263,7 @@ struct App {
         RestoreDC(dc,saved);
         bool current=frame.revision==revision;
         std::wstring status=current?std::to_wstring(frame.samples)+L" samples / pixel":L"Updating lighting...";
-        status+=L"   |   "+std::to_wstring(settings.bounces)+L" surface bounces   |   CPU path tracing";
+        status+=L"   |   "+std::to_wstring(settings.bounces)+L" surface bounces   |   "+(frame.samples?wide(frame.backend):L"Selecting device");
         text(dc,status,{px(20),height-px(106),viewport.right,height-px(82)},gold,smallFont);
         text(dc,L"Drag: move   /   Shift: height   /   Alt: rotate   /   Right drag: orbit   /   Wheel: zoom",{px(20),height-px(79),viewport.right,height-px(55)},muted,smallFont);
         text(dc,message,{px(20),height-px(49),viewport.right,height-px(12)},ink,smallFont,DT_LEFT|DT_WORDBREAK);
@@ -280,6 +301,32 @@ struct App {
     void frameScene() {
         settings.cameraTarget=settings.model==Model::Both?(settings.position[0]+settings.position[1])*.5f+Vec(0,1.4f,0):settings.position[0]+Vec(0,1.4f,0);
         settings.cameraDistance=settings.model==Model::Both?10.f:7.4f;settings.cameraYaw=18;settings.cameraPitch=10;settings.cameraRoll=0;settings.fov=38;
+        if(settings.model==Model::Imported)settings.cameraTarget=modelCenter(0);
+    }
+    Vec modelCenter(int object)const {
+        if(settings.model==Model::Imported&&!imported->empty()) {
+            Bounds bounds;for(const auto& t:*imported)for(Vec p:{t.a,t.b,t.c})bounds.add(p);
+            return (bounds.lo+bounds.hi)*.5f+settings.position[0];
+        }
+        bool sphere=settings.model==Model::Ball||(settings.model==Model::Both&&object==1);
+        return settings.position[object]+Vec(0,sphere?1.f:1.4f,0);
+    }
+    void importModel(const std::filesystem::path& path) {
+        // Complete parsing before changing the current scene.
+        auto geometry=std::make_shared<const std::vector<Triangle>>(loadMesh(path));
+        imported=geometry;settings.objPath=std::filesystem::absolute(path).u8string();settings.model=Model::Imported;
+        settings.position[0]=Vec();settings.rotation[0]=Vec();selected=0;frameScene();layout();
+        message=L"Imported "+path.filename().wstring()+L" ("+std::to_wstring(geometry->size())+L" triangles). Set its color in Surface.";
+    }
+    void drop(HDROP data) {
+        std::filesystem::path path;UINT count=DragQueryFileW(data,0xffffffff,nullptr,0);
+        if(count==1) {
+            UINT length=DragQueryFileW(data,0,nullptr,0);std::vector<wchar_t> name(size_t(length)+1);
+            DragQueryFileW(data,0,name.data(),length+1);path=name.data();
+        }
+        DragFinish(data);
+        if(count!=1){message=L"Drop one OBJ, STL or PLY file at a time.";InvalidateRect(window,nullptr,FALSE);return;}
+        try{importModel(path);}catch(const std::exception& e){MessageBoxA(window,e.what(),"Model import",MB_OK|MB_ICONINFORMATION);}
     }
     void chooseModel(int index) {
         if(index==int(Model::Imported)&&imported->empty()){SendMessageW(modelCombo,CB_SETCURSEL,int(settings.model),0);command(IdImport,BN_CLICKED,nullptr);return;}
@@ -315,6 +362,7 @@ struct App {
                     case IdObject:selected=std::clamp(i,0,1);panelPage();return;
                     case IdPoseJoint:joint=std::clamp(i,0,7);panelPage();return;
                     case IdBounces:settings.bounces=std::clamp(i,0,8);break;
+                    case IdBackend:preferGpu=i==0;break;
                 }
                 changed(false);return;
             }
@@ -323,21 +371,21 @@ struct App {
                 case IdSave:{auto p=fileDialog(true,L"Shading Help scene\0*.shade\0\0",L"shade",L"study.shade");if(!p.empty()){saveSettings(p,settings);message=L"Scene saved.";}break;}
                 case IdLoad:{auto p=fileDialog(false,L"Shading Help scene\0*.shade\0\0",L"shade");if(p.empty())break;
                     Settings next=loadSettings(p);auto geometry=std::make_shared<const std::vector<Triangle>>();
-                    if(next.model==Model::Imported&&!next.objPath.empty())geometry=std::make_shared<const std::vector<Triangle>>(loadObj(std::filesystem::u8path(next.objPath)));
-                    if(next.model==Model::Imported&&geometry->empty())throw std::runtime_error("Scene needs an OBJ mesh.");
+                    if(next.model==Model::Imported&&!next.objPath.empty())geometry=std::make_shared<const std::vector<Triangle>>(loadMesh(std::filesystem::u8path(next.objPath)));
+                    if(next.model==Model::Imported&&geometry->empty())throw std::runtime_error("Scene needs its imported mesh file.");
                     settings=next;imported=geometry;selected=0;layout();message=L"Scene restored.";break;}
                 case IdExport:{if(frame.pixels.empty()||frame.revision!=revision){message=L"Wait for the current render before exporting.";break;}
                     auto p=fileDialog(true,L"Bitmap image\0*.bmp\0\0",L"bmp",L"lighting-study.bmp");if(!p.empty()){saveBmp(p,frame.pixels,frame.width,frame.height);message=L"Exported render without UI handles ("+std::to_wstring(frame.samples)+L" samples).";}break;}
-                case IdReset:settings=Settings();settings.intensity=35;settings.lightPosition={-1.8f,3.3f,1.5f};settings.lightDirection=unit(Vec(0,1.5f,0)-settings.lightPosition);selected=0;layout();break;
-                case IdAim:settings.lightDirection=unit(settings.position[selected]+Vec(0,1.4f,0)-settings.lightPosition);syncBindings();changed(false);break;
+                case IdReset:settings=Settings();imported=std::make_shared<const std::vector<Triangle>>();settings.intensity=35;settings.lightPosition={-1.8f,3.3f,1.5f};settings.lightDirection=unit(Vec(0,1.5f,0)-settings.lightPosition);selected=0;layout();break;
+                case IdAim:settings.lightDirection=unit(modelCenter(selected)-settings.lightPosition);syncBindings();changed(false);break;
                 case IdGround:settings.ground=SendMessageW(sender,BM_GETCHECK,0,0)==BST_CHECKED;changed(false);break;
                 case IdGray:settings.grayscale=SendMessageW(sender,BM_GETCHECK,0,0)==BST_CHECKED;changed(false);break;
                 case IdHandles:handles=SendMessageW(sender,BM_GETCHECK,0,0)==BST_CHECKED;break;
                 case IdHome:frameScene();syncBindings();changed(false);break;
                 case IdPoseReset:settings.jointPitch.fill(0);settings.jointSpread.fill(0);syncBindings();changed(false);break;
                 case IdPreset:settings.model=Model::Ball;selected=0;settings.position[0]=Vec();settings.surface[0]=Vec(.75f);settings.floorColor={.8f,.08f,.04f};settings.fill=.015f;settings.bounces=3;settings.view=View::Beauty;settings.ground=true;frameScene();layout();break;
-                case IdImport:{auto p=fileDialog(false,L"Wavefront OBJ mesh\0*.obj\0\0",L"obj");if(p.empty())break;
-                    auto geometry=std::make_shared<const std::vector<Triangle>>(loadObj(p));imported=geometry;settings.objPath=p.u8string();settings.model=Model::Imported;settings.position[0]=Vec();selected=0;frameScene();layout();message=L"Imported flat-shaded OBJ. Materials use the surface color picker.";break;}
+                case IdImport:{auto p=fileDialog(false,L"3D models (OBJ, STL, PLY)\0*.obj;*.stl;*.ply\0All files\0*.*\0\0",L"obj");if(!p.empty())importModel(p);break;}
+                case IdImportHelp:MessageBoxW(window,L"In Blender:\n1. Select the objects you want to export.\n2. File > Export > Wavefront OBJ, STL or PLY.\n3. Enable Selection Only if you want just those objects.\n4. Apply modifiers and triangulate concave faces.\n5. For OBJ, choose Y Up. For STL/PLY, you can correct orientation with Object > Pitch/Yaw/Roll here.\n6. Drop the exported file into Shading Help.\n\nGeometry is centered and scaled to fit. Use Surface to choose a material color. Textures, animation and Blender node materials are not imported.\n\n.blend project files need exporting first.",L"Importing your own models",MB_OK|MB_ICONINFORMATION);break;
             }
             InvalidateRect(window,nullptr,FALSE);
         } catch(const std::exception& e) {MessageBoxA(window,e.what(),"Shading Help",MB_OK|MB_ICONERROR);}
@@ -426,7 +474,10 @@ struct App {
         SelectObject(memory,old);DeleteObject(bitmap);DeleteDC(memory);ReleaseDC(window,screenDC);saveBmp(path,pixels,width,height);
     }
     void tick() {
-        if(renderer.frame(frame,frame.revision==revision?frame.samples:0,revision))InvalidateRect(window,nullptr,FALSE);
+        if(renderer.frame(frame,frame.revision==revision?frame.samples:0,revision)) {
+            if(deviceLabel)SetWindowTextW(deviceLabel,deviceText().c_str());
+            InvalidateRect(window,nullptr,FALSE);
+        }
         if(smoke) {
             if(GetTickCount64()-smokeStart>90000){PostQuitMessage(2);return;}
             if(frame.revision!=revision||frame.samples<8)return;
@@ -454,6 +505,22 @@ struct App {
                     if(SendMessageW(GetDlgItem(window,IdBounces),CB_GETCURSEL,0,0)!=3)
                         throw std::runtime_error("Bounce count label does not match the renderer.");
                     settings.bounces=2;
+                    command(IdTabFirst+3,BN_CLICKED,tabButtons[3]);
+                    HWND backend=GetDlgItem(window,IdBackend);SendMessageW(backend,CB_SETCURSEL,1,0);command(IdBackend,CBN_SELCHANGE,backend);
+                    if(preferGpu)throw std::runtime_error("CPU renderer selection failed.");
+                    SendMessageW(backend,CB_SETCURSEL,0,0);command(IdBackend,CBN_SELCHANGE,backend);
+                    if(!preferGpu)throw std::runtime_error("Automatic GPU selection failed.");
+                    command(IdTabFirst,BN_CLICKED,tabButtons[0]);
+                    Settings saved=settings;auto savedMesh=imported;
+                    auto fixture=smokePath.parent_path()/L"import-smoke.ply";
+                    {std::ofstream out(fixture);out<<"ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n-1 0 0\n1 0 0\n0 2 0\n3 0 1 2\n";}
+                    std::wstring path=fixture.wstring();size_t bytes=sizeof(DROPFILES)+(path.size()+2)*sizeof(wchar_t);
+                    HGLOBAL memory=GlobalAlloc(GHND,bytes);if(!memory)throw std::runtime_error("Drop test allocation failed.");
+                    auto files=static_cast<DROPFILES*>(GlobalLock(memory));files->pFiles=sizeof(DROPFILES);files->fWide=TRUE;
+                    std::copy(path.begin(),path.end(),reinterpret_cast<wchar_t*>(reinterpret_cast<char*>(files)+sizeof(DROPFILES)));
+                    GlobalUnlock(memory);SendMessageW(window,WM_DROPFILES,reinterpret_cast<WPARAM>(memory),0);
+                    if(settings.model!=Model::Imported||imported->size()!=1)throw std::runtime_error("Native file drop import failed.");
+                    settings=saved;imported=savedMesh;
                     settings.model=Model::Head;settings.position[0]=Vec();settings.lightDirection=unit(Vec(0,1.4f,0)-settings.lightPosition);
                     page=0;layout();smokeStage=1;
                 } else if(frame.samples>=64) {
@@ -475,7 +542,8 @@ App* app=nullptr;
 LRESULT CALLBACK windowProc(HWND window,UINT msg,WPARAM w,LPARAM l) {
     if(!app)return DefWindowProcW(window,msg,w,l);
     switch(msg) {
-        case WM_CREATE:app->window=window;app->dpi=GetDpiForWindow(window)/96.f;app->setupFonts();app->bgBrush=CreateSolidBrush(bg);app->panelBrush=CreateSolidBrush(panel);SetTimer(window,1,60,nullptr);return 0;
+        case WM_CREATE:app->window=window;app->dpi=GetDpiForWindow(window)/96.f;app->setupFonts();app->bgBrush=CreateSolidBrush(bg);app->panelBrush=CreateSolidBrush(panel);DragAcceptFiles(window,TRUE);SetTimer(window,1,60,nullptr);return 0;
+        case WM_DROPFILES:app->drop(reinterpret_cast<HDROP>(w));return 0;
         case WM_SIZE:if(w!=SIZE_MINIMIZED&&app->font)app->layout();return 0;
         case WM_DPICHANGED:{app->dpi=HIWORD(w)/96.f;app->setupFonts();auto r=reinterpret_cast<RECT*>(l);SetWindowPos(window,nullptr,r->left,r->top,r->right-r->left,r->bottom-r->top,SWP_NOZORDER|SWP_NOACTIVATE);return 0;}
         case WM_GETMINMAXINFO:{auto m=reinterpret_cast<MINMAXINFO*>(l);m->ptMinTrackSize={app->px(1020),app->px(760)};return 0;}
@@ -494,6 +562,7 @@ LRESULT CALLBACK windowProc(HWND window,UINT msg,WPARAM w,LPARAM l) {
         case WM_LBUTTONDBLCLK:app->inspect({GET_X_LPARAM(l),GET_Y_LPARAM(l)});return 0;
         case WM_MOUSEWHEEL:{POINT p{GET_X_LPARAM(l),GET_Y_LPARAM(l)};ScreenToClient(window,&p);if(PtInRect(&app->viewport,p)){app->settings.cameraDistance*=std::exp(-GET_WHEEL_DELTA_WPARAM(w)/120.f*.12f);app->changed(false);}return 0;}
         case WM_KEYDOWN:
+            if(w=='O'&&(GetKeyState(VK_CONTROL)&0x8000)){app->command(IdImport,BN_CLICKED,nullptr);return 0;}
             if(w=='H'){app->handles=!app->handles;app->panelPage();}
             if(w=='F'){app->frameScene();app->changed(false);}
             if(w=='Q'||w=='E'){app->settings.cameraRoll+=(w=='Q'?-3.f:3.f);app->syncBindings();app->changed(false);}
