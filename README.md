@@ -4,11 +4,15 @@ A free, native Windows light-and-form study app for drawing. C++17, Win32, no br
 
 ![The native Windows application, captured during its automated UI test](docs/windows-app.png)
 
+This test-machine screenshot shows CPU fallback because the runner has no hardware GPU. Compatible Windows PCs use the GPU automatically; the View tab shows the active device.
+
 ## Get the Windows application
 
 Download the **ShadingHelp-Windows-x64** artifact from a successful [Windows build](https://github.com/Basti-Wood/Shading-help/actions/workflows/windows.yml), extract it, and run `ShadingHelp.exe`. GitHub may require sign-in to download build artifacts. The executable is unsigned and does not need installation.
 
 **[Windows builds and downloads](https://github.com/Basti-Wood/Shading-help/actions/workflows/windows.yml)**
+
+**[Download the verified GPU + model-import build](https://github.com/Basti-Wood/Shading-help/actions/runs/43207292274/artifacts/13940370423)** — [successful checks](https://github.com/Basti-Wood/Shading-help/actions/runs/43207292274) for source commit `545ac7a`: 50 core/import checks, GPU shader comparisons against the CPU reference, Windows UI smoke tests, and Linux address/undefined-behavior sanitizers. GPU shader correctness was checked with Direct3D WARP; no physical GPU performance benchmark was available.
 
 The build runs numerical, renderer and model-import tests, and compares the GPU shaders with the CPU reference. The Windows workflow also exercises model/light/direction dragging, numeric input, file-drop import, renderer selection and settings-page layout. Build artifacts have a retention period; use the latest successful build or compile from source if an older download expires.
 

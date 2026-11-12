@@ -56,6 +56,8 @@ There is no denoiser. Shadow edges, area lights and bounces converge as samples 
 
 ## GPU backend
 
+![Renderer selection and device status in the View tab; CPU fallback on the test machine](render-device.png)
+
 The Windows app uses a Direct3D 11 compute shader (`cs_5_0`) for camera rays, BVH traversal, analytic sphere/ground intersections, direct-light shadow rays, diffuse hemisphere bounces, progressive accumulation, exposure, grayscale and sRGB conversion. It implements the same estimator as the CPU reference. This is general compute ray tracing; it does not require DXR or an RTX GPU.
 
 Geometry is uploaded as structured buffers. The renderer reuses BVH geometry when only the camera, light or material changes. Each dispatch covers a strip of at most 64 rows, with cancellation checks between strips. Completed passes are synchronized to bound queued work and interaction latency. Readback supplies the native Win32 viewport, image export and the numeric pixel inspector. UI drawing, import, scene preparation and picking remain CPU work.

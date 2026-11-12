@@ -2,6 +2,8 @@
 
 Click **Import model** at the top, press **Ctrl+O** while the viewport has focus, or drag **one file** from Explorer into the application. This replaces the study model after the entire file has been parsed successfully. The model can then be moved, rotated, colored and lit like the built-in head. Export multiple objects together if you want them treated as a single study model.
 
+![Native import controls and Blender export help](import-controls.png)
+
 | Format | Supported |
 |---|---|
 | Wavefront OBJ | Positions, positive/negative face indices, triangle and convex polygon faces |
