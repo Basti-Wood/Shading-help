@@ -45,7 +45,10 @@ int main() {
         compare(gpu,s,"Red floor bounce isolation",31,39,128);
         s.view=View::Direct;s.exposure=-1;s.grayscale=true;compare(gpu,s,"Direct grayscale / negative exposure",23,19,32);
         GpuRenderer hardware;
-        if(hardware.initialize()) {std::cout<<"Hardware found: "<<hardware.name()<<'\n';compare(hardware,Settings(),"Physical hardware");}
+        if(hardware.initialize()) {
+            require(hardware.name().find("Microsoft Basic")==std::string::npos,"GPU selection excludes Basic Render Driver even without software flag");
+            std::cout<<"Hardware adapter found: "<<hardware.name()<<'\n';compare(hardware,Settings(),"Hardware adapter");
+        }
         else std::cout<<"No hardware benchmark on this runner. "<<hardware.error()<<'\n';
         std::cout<<"All GPU shader checks passed.\n";return 0;
     }catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}

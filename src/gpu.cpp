@@ -78,7 +78,11 @@ bool GpuRenderer::initialize(bool softwareForTests) {
             for(UINT i=0;;++i) {
                 ComPtr<IDXGIAdapter1> adapter;HRESULT hr=factory->EnumAdapters1(i,adapter.GetAddressOf());if(hr==DXGI_ERROR_NOT_FOUND)break;
                 check(hr,"Enumerating adapter");DXGI_ADAPTER_DESC1 info{};check(adapter->GetDesc1(&info),"Reading adapter");
-                if(!(info.Flags&DXGI_ADAPTER_FLAG_SOFTWARE))candidates.push_back({adapter,info});
+                // The primary Basic Render Driver can omit SOFTWARE when the
+                // real display driver is unavailable. Never label WARP as GPU.
+                bool basic=(info.VendorId==0x1414&&info.DeviceId==0x8c)||
+                    std::wstring(info.Description).find(L"Microsoft Basic")!=std::wstring::npos;
+                if(!(info.Flags&DXGI_ADAPTER_FLAG_SOFTWARE)&&!basic)candidates.push_back({adapter,info});
             }
             std::stable_sort(candidates.begin(),candidates.end(),[](const Adapter& a,const Adapter& b){return a.desc.DedicatedVideoMemory>b.desc.DedicatedVideoMemory;});
             for(auto& a:candidates) {

@@ -511,7 +511,7 @@ struct App {
                     SendMessageW(backend,CB_SETCURSEL,0,0);command(IdBackend,CBN_SELCHANGE,backend);
                     if(!preferGpu)throw std::runtime_error("Automatic GPU selection failed.");
                     command(IdTabFirst,BN_CLICKED,tabButtons[0]);
-                    Settings saved=settings;auto savedMesh=imported;
+                    Settings saved=settings;auto savedMesh=imported;auto savedMessage=message;
                     auto fixture=smokePath.parent_path()/L"import-smoke.ply";
                     {std::ofstream out(fixture);out<<"ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n-1 0 0\n1 0 0\n0 2 0\n3 0 1 2\n";}
                     std::wstring path=fixture.wstring();size_t bytes=sizeof(DROPFILES)+(path.size()+2)*sizeof(wchar_t);
@@ -520,7 +520,7 @@ struct App {
                     std::copy(path.begin(),path.end(),reinterpret_cast<wchar_t*>(reinterpret_cast<char*>(files)+sizeof(DROPFILES)));
                     GlobalUnlock(memory);SendMessageW(window,WM_DROPFILES,reinterpret_cast<WPARAM>(memory),0);
                     if(settings.model!=Model::Imported||imported->size()!=1)throw std::runtime_error("Native file drop import failed.");
-                    settings=saved;imported=savedMesh;
+                    settings=saved;imported=savedMesh;message=savedMessage;
                     settings.model=Model::Head;settings.position[0]=Vec();settings.lightDirection=unit(Vec(0,1.4f,0)-settings.lightPosition);
                     page=0;layout();smokeStage=1;
                 } else if(frame.samples>=64) {
